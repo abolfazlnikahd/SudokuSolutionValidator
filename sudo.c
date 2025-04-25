@@ -16,74 +16,92 @@ int sudoku[SIZE][SIZE] = {
     {3,4,5,2,8,6,1,7,9}
 };
 
+int row_valid = 0, col_valid = 0;
+int box_valid[9] = {0};
 
-int result[3] = {0, 0, 0};
-
-void* check_rows(void* arg) {
+void* check_row(void* arg) {
     for (int i = 0; i < SIZE; i++) {
-        int seen[SIZE + 1] = {0};
+        int seen[10] = {0};
         for (int j = 0; j < SIZE; j++) {
             int num = sudoku[i][j];
-            if (num < 1 || num > 9 || seen[num]) {
-                pthread_exit(NULL);
-            }
+            if (num < 1 || num > 9 || seen[num]) pthread_exit(NULL);
             seen[num] = 1;
         }
     }
-    result[0] = 1;
+    row_valid = 1;
     pthread_exit(NULL);
 }
 
-void* check_cols(void* arg) {
+void* check_col(void* arg) {
     for (int j = 0; j < SIZE; j++) {
-        int seen[SIZE + 1] = {0};
+        int seen[10] = {0};
         for (int i = 0; i < SIZE; i++) {
             int num = sudoku[i][j];
-            if (num < 1 || num > 9 || seen[num]) {
-                pthread_exit(NULL);
-            }
+            if (num < 1 || num > 9 || seen[num]) pthread_exit(NULL);
             seen[num] = 1;
         }
     }
-    result[1] = 1;
+    col_valid = 1;
     pthread_exit(NULL);
 }
 
-void* check_boxes(void* arg) {
-    for (int row = 0; row < SIZE; row += 3) {
-        for (int col = 0; col < SIZE; col += 3) {
-            int seen[SIZE + 1] = {0};
-            for (int i = row; i < row + 3; i++) {
-                for (int j = col; j < col + 3; j++) {
-                    int num = sudoku[i][j];
-                    if (num < 1 || num > 9 || seen[num]) {
-                        pthread_exit(NULL);
-                    }
-                    seen[num] = 1;
-                }
-            }
+typedef struct {
+    int row;
+    int col;
+    int index;
+} BoxPos;
+
+void* check_box(void* arg) {
+    BoxPos* pos = (BoxPos*) arg;
+    int seen[10] = {0};
+    for (int i = pos->row; i < pos->row + 3; i++) {
+        for (int j = pos->col; j < pos->col + 3; j++) {
+            int num = sudoku[i][j];
+            if (num < 1 || num > 9 || seen[num]) pthread_exit(NULL);
+            seen[num] = 1;
         }
     }
-    result[2] = 1;
+    box_valid[pos->index] = 1;
+    free(pos);
     pthread_exit(NULL);
 }
 
 int main() {
-    pthread_t threads[3];
+    pthread_t row_thread, col_thread, box_threads[9];
 
+    pthread_create(&row_thread, NULL, check_row, NULL);
+    pthread_create(&col_thread, NULL, check_col, NULL);
 
-    pthread_create(&threads[0], NULL, check_rows, NULL);
-    pthread_create(&threads[1], NULL, check_cols, NULL);
-    pthread_create(&threads[2], NULL, check_boxes, NULL);
-
-    for (int i = 0; i < 3; i++) {
-        pthread_join(threads[i], NULL);
+    int index = 0;
+    for (int i = 0; i < SIZE; i += 3) {
+        for (int j = 0; j < SIZE; j += 3) {
+            BoxPos* pos = (BoxPos*) malloc(sizeof(BoxPos));
+            pos->row = i;
+            pos->col = j;
+            pos->index = index;
+            pthread_create(&box_threads[index], NULL, check_box, (void*) pos);
+            index++;
+        }
     }
 
-    if (result[0] && result[1] && result[2]) {
-        printf("it's ok\n");
+    pthread_join(row_thread, NULL);
+    pthread_join(col_thread, NULL);
+    for (int i = 0; i < 9; i++) {
+        pthread_join(box_threads[i], NULL);
+    }
+
+    int all_boxes_valid = 1;
+    for (int i = 0; i < 9; i++) {
+        if (box_valid[i] == 0) {
+            all_boxes_valid = 0;
+            break;
+        }
+    }
+
+    if (row_valid && col_valid && all_boxes_valid) {
+        printf("OK\n");
     } else {
-        printf("it's not OK\n");
+        printf("NOT OK\n");
     }
 
     return 0;
